@@ -53,7 +53,7 @@ function formatDate(iso: string): string {
 
 export default function Changelog({limit = 25}: {limit?: number}) {
   const {siteConfig} = useDocusaurusContext();
-  const repo = (siteConfig.customFields?.githubRepo as string) || 'Tchuekam/tchuekam-agent';
+  const repo = (siteConfig.customFields?.githubRepo as string) || 'Tchuekam/tchuekam-desktop';
   const [releases, setReleases] = useState<Release[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

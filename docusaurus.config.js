@@ -28,7 +28,7 @@ const config = {
 
   // Global app config available to all components via useDocusaurusContext()
   customFields: {
-    githubRepo: 'Tchuekam/tchuekam-agent',
+    githubRepo: 'Tchuekam/tchuekam-desktop',
     websiteUrl: 'https://tchuekam.com',
     contactEmail: 'support@tchuekam.com',
   },

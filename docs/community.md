@@ -11,10 +11,10 @@ TchueKAM is built by people who care, for people who care. Here's how to plug in
 ## Discussions and ideas
 The best place to share feature requests, ask questions, and see what others are building:
 
-**[github.com/Tchuekam/tchuekam-agent/discussions](https://github.com/Tchuekam/tchuekam-agent/discussions)**
+**[github.com/Tchuekam/tchuekam-desktop/discussions](https://github.com/Tchuekam/tchuekam-desktop/discussions)**
 
 ## Report a bug or contribute
-**[github.com/Tchuekam/tchuekam-agent](https://github.com/Tchuekam/tchuekam-agent)** — file issues, browse code, submit pull requests.
+**[github.com/Tchuekam/tchuekam-desktop](https://github.com/Tchuekam/tchuekam-desktop)** — file issues, browse code, submit pull requests.
 
 ## Stay updated
 - Star the repo to get release notifications

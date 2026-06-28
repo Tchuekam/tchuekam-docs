@@ -68,7 +68,7 @@ function formatDate(iso: string): string {
 
 export default function LatestRelease({showAllPlatforms = false}: {showAllPlatforms?: boolean}) {
   const {siteConfig} = useDocusaurusContext();
-  const repo = (siteConfig.customFields?.githubRepo as string) || 'Tchuekam/tchuekam-agent';
+  const repo = (siteConfig.customFields?.githubRepo as string) || 'Tchuekam/tchuekam-desktop';
   const [release, setRelease] = useState<Release | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [os, setOS] = useState<OS>('windows');
