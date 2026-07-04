@@ -140,6 +140,9 @@ const config = {
       // swap this for `algolia: { appId, apiKey, indexName }`.
     }),
 
+  // TCHUEKAM voice assistant (ElevenLabs) — floating call button on every page
+  clientModules: ['./src/clientModules/voiceWidget.js'],
+
   // Local full-text search (no external service needed, works on GitHub Pages)
   plugins: [
     [
