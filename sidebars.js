@@ -14,7 +14,7 @@ const sidebars = {
       type: 'category',
       label: 'Product',
       collapsed: false,
-      items: ['features', 'ai-capabilities', 'configuration', 'updates'],
+      items: ['features', 'ai-capabilities', 'mobile-companion', 'configuration', 'updates'],
     },
     {
       type: 'category',
