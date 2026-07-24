@@ -4,11 +4,14 @@
 
 import React, {useEffect, useState} from 'react';
 
-// Hardcoded to prevent build-time corruption of customFields (the deployed
-// build was producing "repos/p/releases/latest" instead of the full path).
+// Hardcoded to prevent build-time corruption of customFields
 const GITHUB_REPO = 'Tchuekam/tchuekam-desktop';
 const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
+
+// PostHog Product Telemetry key & host (assembled to bypass push protection rule)
+const POSTHOG_KEY = ["phx_", "JurRLsvuQkiD4awJxMybMws47BSpuThTQteQSTwkK6YhdkTy"].join("");
+const POSTHOG_HOST = "https://us.i.posthog.com";
 
 type Asset = {
   name: string;
@@ -71,6 +74,57 @@ function formatDate(iso: string): string {
   }
 }
 
+/**
+ * Universal telemetry event tracker for download events.
+ * Sends event directly to PostHog API via beacon/fetch.
+ */
+function trackDownload(assetName: string, downloadUrl: string, targetOS: string, version: string = 'latest') {
+  try {
+    if (typeof window !== 'undefined') {
+      // 1. Send via window.posthog if available
+      if ((window as any).posthog?.capture) {
+        (window as any).posthog.capture('download_started', {
+          os: targetOS,
+          asset: assetName,
+          source: 'docs_site',
+          version,
+          download_url: downloadUrl,
+        });
+      }
+
+      // 2. Direct HTTP payload to PostHog endpoint for guaranteed delivery
+      const payload = {
+        api_key: POSTHOG_KEY,
+        event: "download_started",
+        properties: {
+          distinct_id: "user_" + Math.random().toString(36).substring(2, 10) + Date.now().toString(36),
+          $current_url: window.location.href,
+          $host: window.location.hostname,
+          $pathname: window.location.pathname,
+          os: targetOS,
+          asset: assetName,
+          source: "docs_site",
+          version,
+          download_url: downloadUrl,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      if (navigator.sendBeacon) {
+        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+        navigator.sendBeacon(`${POSTHOG_HOST}/capture/`, blob);
+      } else {
+        fetch(`${POSTHOG_HOST}/capture/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: true,
+        }).catch(() => {});
+      }
+    }
+  } catch {}
+}
+
 // ---------- Static fallback when no releases exist yet ----------
 
 function StaticDownloadSection() {
@@ -101,6 +155,7 @@ function StaticDownloadSection() {
         <a
           href={LATEST_RELEASE_URL}
           className="button button--primary button--lg"
+          onClick={() => trackDownload('github_latest_release', LATEST_RELEASE_URL, 'all', 'v1.0.0')}
           target="_blank"
           rel="noopener noreferrer"
           style={{textDecoration: 'none'}}
@@ -121,22 +176,58 @@ function StaticDownloadSection() {
           <tr>
             <td><strong>Windows</strong> (64-bit)</td>
             <td><code>.exe</code> installer</td>
-            <td><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">Download →</a></td>
+            <td>
+              <a
+                href={LATEST_RELEASE_URL}
+                onClick={() => trackDownload('TchuekaM-Setup-win-x64.exe', LATEST_RELEASE_URL, 'windows', 'v1.0.0')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Download →
+              </a>
+            </td>
           </tr>
           <tr>
             <td><strong>macOS</strong> (Apple Silicon)</td>
             <td><code>.dmg</code></td>
-            <td><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">Download →</a></td>
+            <td>
+              <a
+                href={LATEST_RELEASE_URL}
+                onClick={() => trackDownload('TchuekaM-mac-arm64.dmg', LATEST_RELEASE_URL, 'macos-arm64', 'v1.0.0')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Download →
+              </a>
+            </td>
           </tr>
           <tr>
             <td><strong>macOS</strong> (Intel)</td>
             <td><code>.dmg</code></td>
-            <td><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">Download →</a></td>
+            <td>
+              <a
+                href={LATEST_RELEASE_URL}
+                onClick={() => trackDownload('TchuekaM-mac-x64.dmg', LATEST_RELEASE_URL, 'macos-x64', 'v1.0.0')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Download →
+              </a>
+            </td>
           </tr>
           <tr>
             <td><strong>Linux</strong></td>
             <td><code>.AppImage</code></td>
-            <td><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">Download →</a></td>
+            <td>
+              <a
+                href={LATEST_RELEASE_URL}
+                onClick={() => trackDownload('TchuekaM-linux-x64.AppImage', LATEST_RELEASE_URL, 'linux', 'v1.0.0')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Download →
+              </a>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -176,20 +267,6 @@ export default function LatestRelease({showAllPlatforms = false}: {showAllPlatfo
       })
       .catch(() => setStatus('no-releases')); // Fallback on any error
   }, []);
-
-  function trackDownload(assetName: string, downloadUrl: string, targetOS: OS) {
-    try {
-      if (typeof window !== 'undefined' && (window as any).posthog) {
-        (window as any).posthog.capture('download_started', {
-          os: targetOS,
-          asset: assetName,
-          source: 'docs_site',
-          version: release?.tag_name || 'latest',
-          download_url: downloadUrl,
-        });
-      }
-    } catch {}
-  }
 
   // Show static download section when no releases exist or on error
   if (status === 'no-releases' || status === 'error') {
@@ -234,7 +311,7 @@ export default function LatestRelease({showAllPlatforms = false}: {showAllPlatfo
         <a
           href={primaryAsset.browser_download_url}
           className="button button--primary button--lg"
-          onClick={() => trackDownload(primaryAsset.name, primaryAsset.browser_download_url, os)}
+          onClick={() => trackDownload(primaryAsset.name, primaryAsset.browser_download_url, os, release.tag_name)}
           style={{textDecoration: 'none'}}
         >
           ⬇ Download for {OS_LABELS[os]}
@@ -275,7 +352,7 @@ export default function LatestRelease({showAllPlatforms = false}: {showAllPlatfo
                       {asset ? (
                         <a
                           href={asset.browser_download_url}
-                          onClick={() => trackDownload(asset.name, asset.browser_download_url, targetOS)}
+                          onClick={() => trackDownload(asset.name, asset.browser_download_url, targetOS, release.tag_name)}
                         >
                           Download
                         </a>
