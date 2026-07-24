@@ -1,9 +1,14 @@
-// Fetches the latest GitHub release for tchuekam-agent and renders the
+// Fetches the latest GitHub release for tchuekam-desktop and renders the
 // version, release date, and per-OS download buttons. Used by the home page,
 // the Installation page, and the Updates page. Single source of truth: GitHub.
 
 import React, {useEffect, useState} from 'react';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+
+// Hardcoded to prevent build-time corruption of customFields (the deployed
+// build was producing "repos/p/releases/latest" instead of the full path).
+const GITHUB_REPO = 'Tchuekam/tchuekam-desktop';
+const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
+const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
 
 type Asset = {
   name: string;
@@ -44,10 +49,10 @@ const ASSET_PATTERNS: Record<OS, RegExp> = {
 };
 
 const OS_LABELS: Record<OS, string> = {
-  'windows':     'Download for Windows',
-  'macos-arm64': 'Download for macOS (Apple Silicon)',
-  'macos-x64':   'Download for macOS (Intel)',
-  'linux':       'Download for Linux',
+  'windows':     'Windows',
+  'macos-arm64': 'macOS (Apple Silicon)',
+  'macos-x64':   'macOS (Intel)',
+  'linux':       'Linux',
 };
 
 function formatBytes(bytes: number): string {
@@ -66,31 +71,115 @@ function formatDate(iso: string): string {
   }
 }
 
+// ---------- Static fallback when no releases exist yet ----------
+
+function StaticDownloadSection() {
+  return (
+    <div style={{padding: '1.5rem', border: '1px solid rgba(0,242,254,0.15)', borderRadius: 12, background: 'rgba(0,242,254,0.04)'}}>
+      <div style={{display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 16}}>
+        <span style={{
+          background: 'rgba(0,242,254,0.12)',
+          color: '#00F2FE',
+          padding: '4px 10px',
+          borderRadius: 12,
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: 0.5,
+        }}>
+          v1.0.0
+        </span>
+        <span style={{opacity: 0.6, fontSize: 14}}>
+          Latest release
+        </span>
+      </div>
+
+      <p style={{margin: '0 0 16px', opacity: 0.85, lineHeight: 1.6}}>
+        Download TchueKAM Agent for your platform:
+      </p>
+
+      <div style={{display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16}}>
+        <a
+          href={LATEST_RELEASE_URL}
+          className="button button--primary button--lg"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{textDecoration: 'none'}}
+        >
+          ⬇ Download from GitHub
+        </a>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Platform</th>
+            <th>File type</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Windows</strong> (64-bit)</td>
+            <td><code>.exe</code> installer</td>
+            <td><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">Download →</a></td>
+          </tr>
+          <tr>
+            <td><strong>macOS</strong> (Apple Silicon)</td>
+            <td><code>.dmg</code></td>
+            <td><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">Download →</a></td>
+          </tr>
+          <tr>
+            <td><strong>macOS</strong> (Intel)</td>
+            <td><code>.dmg</code></td>
+            <td><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">Download →</a></td>
+          </tr>
+          <tr>
+            <td><strong>Linux</strong></td>
+            <td><code>.AppImage</code></td>
+            <td><a href={LATEST_RELEASE_URL} target="_blank" rel="noopener noreferrer">Download →</a></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style={{opacity: 0.5, fontSize: 13, marginTop: 12}}>
+        All downloads available on the{' '}
+        <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">GitHub Releases page</a>.
+      </p>
+    </div>
+  );
+}
+
+// ---------- Main component ----------
+
 export default function LatestRelease({showAllPlatforms = false}: {showAllPlatforms?: boolean}) {
-  const {siteConfig} = useDocusaurusContext();
-  const repo = (siteConfig.customFields?.githubRepo as string) || 'Tchuekam/tchuekam-desktop';
   const [release, setRelease] = useState<Release | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'no-releases' | 'error'>('loading');
   const [os, setOS] = useState<OS>('windows');
 
   useEffect(() => {
     setOS(detectOS());
-    fetch(`https://api.github.com/repos/${repo}/releases/latest`)
+    fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`)
       .then(r => {
+        if (r.status === 404) {
+          // No releases published yet — show static fallback
+          setStatus('no-releases');
+          return null;
+        }
         if (!r.ok) throw new Error(`GitHub API returned ${r.status}`);
         return r.json();
       })
-      .then(setRelease)
-      .catch(e => setError(e.message || String(e)));
-  }, [repo]);
+      .then(data => {
+        if (data) {
+          setRelease(data);
+          setStatus('loaded');
+        }
+      })
+      .catch(() => setStatus('no-releases')); // Fallback on any error
+  }, []);
 
   function trackDownload(assetName: string, downloadUrl: string, targetOS: OS) {
     try {
-      // PostHog is loaded on the parent website. If embedded via iframe or
-      // available here, fire the event. Safe no-op otherwise.
-      // @ts-ignore
       if (typeof window !== 'undefined' && (window as any).posthog) {
-        // @ts-ignore
         (window as any).posthog.capture('download_started', {
           os: targetOS,
           asset: assetName,
@@ -102,18 +191,12 @@ export default function LatestRelease({showAllPlatforms = false}: {showAllPlatfo
     } catch {}
   }
 
-  if (error) {
-    return (
-      <div style={{padding: '1rem', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8}}>
-        <strong>Couldn't load release info.</strong> You can still download directly from{' '}
-        <a href={`https://github.com/${repo}/releases/latest`} target="_blank" rel="noopener noreferrer">
-          GitHub
-        </a>.
-      </div>
-    );
+  // Show static download section when no releases exist or on error
+  if (status === 'no-releases' || status === 'error') {
+    return <StaticDownloadSection />;
   }
 
-  if (!release) {
+  if (status === 'loading' || !release) {
     return <p style={{opacity: 0.6}}>Loading latest version…</p>;
   }
 
@@ -122,6 +205,11 @@ export default function LatestRelease({showAllPlatforms = false}: {showAllPlatfo
     allAssets.find(a => ASSET_PATTERNS[targetOS].test(a.name));
 
   const primaryAsset = matchAsset(os);
+
+  // If the release exists but has no matching assets, show static fallback
+  if (allAssets.length === 0) {
+    return <StaticDownloadSection />;
+  }
 
   return (
     <div className="latest-release">
@@ -149,7 +237,7 @@ export default function LatestRelease({showAllPlatforms = false}: {showAllPlatfo
           onClick={() => trackDownload(primaryAsset.name, primaryAsset.browser_download_url, os)}
           style={{textDecoration: 'none'}}
         >
-          {OS_LABELS[os]}
+          ⬇ Download for {OS_LABELS[os]}
           <span style={{opacity: 0.7, fontSize: 13, marginLeft: 8}}>
             ({formatBytes(primaryAsset.size)})
           </span>
@@ -180,7 +268,7 @@ export default function LatestRelease({showAllPlatforms = false}: {showAllPlatfo
                 const asset = matchAsset(targetOS);
                 return (
                   <tr key={targetOS}>
-                    <td>{OS_LABELS[targetOS].replace('Download for ', '')}</td>
+                    <td>{OS_LABELS[targetOS]}</td>
                     <td><code>{asset ? asset.name : '—'}</code></td>
                     <td>{asset ? formatBytes(asset.size) : '—'}</td>
                     <td>

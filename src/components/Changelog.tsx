@@ -3,7 +3,9 @@
 // publishing a GitHub release automatically appears here.
 
 import React, {useEffect, useState} from 'react';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+
+// Hardcoded to prevent build-time corruption of customFields (same fix as LatestRelease)
+const GITHUB_REPO = 'Tchuekam/tchuekam-desktop';
 
 type Release = {
   tag_name: string;
@@ -52,8 +54,7 @@ function formatDate(iso: string): string {
 }
 
 export default function Changelog({limit = 25}: {limit?: number}) {
-  const {siteConfig} = useDocusaurusContext();
-  const repo = (siteConfig.customFields?.githubRepo as string) || 'Tchuekam/tchuekam-desktop';
+  const repo = GITHUB_REPO;
   const [releases, setReleases] = useState<Release[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
