@@ -1,32 +1,35 @@
-// Fetches the latest GitHub release for tchuekam-desktop and renders the
-// version, release date, and per-OS download buttons. Used by the home page,
-// the Installation page, and the Updates page. Single source of truth: GitHub.
+// Self-hosted direct download component for TchueKAM Agent.
+// Single source of truth: Direct self-hosted release API endpoints.
 
 import React, {useEffect, useState} from 'react';
 
-// Hardcoded to prevent build-time corruption of customFields
-const GITHUB_REPO = 'Tchuekam/tchuekam-desktop';
-const RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
-const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
+const DOWNLOAD_BASE_URL = 'https://agent.tchuekam.com/api/download';
 
-// PostHog Product Telemetry key & host (assembled to bypass push protection rule)
-const POSTHOG_KEY = ["phx_", "JurRLsvuQkiD4awJxMybMws47BSpuThTQteQSTwkK6YhdkTy"].join("");
-const POSTHOG_HOST = "https://us.i.posthog.com";
-
-type Asset = {
-  name: string;
-  browser_download_url: string;
-  size: number;
-  download_count: number;
-};
-
-type Release = {
-  tag_name: string;
-  name: string;
-  published_at: string;
-  html_url: string;
-  body: string;
-  assets: Asset[];
+const DIRECT_DOWNLOADS = {
+  'windows': {
+    url: `${DOWNLOAD_BASE_URL}/windows`,
+    filename: 'TchueKAM-Setup.exe',
+    label: 'Windows (64-bit)',
+    type: '.exe installer',
+  },
+  'macos-arm64': {
+    url: `${DOWNLOAD_BASE_URL}/mac-arm64`,
+    filename: 'TchueKAM-Mac-arm64.dmg',
+    label: 'macOS (Apple Silicon)',
+    type: '.dmg',
+  },
+  'macos-x64': {
+    url: `${DOWNLOAD_BASE_URL}/mac-x64`,
+    filename: 'TchueKAM-Mac-x64.dmg',
+    label: 'macOS (Intel)',
+    type: '.dmg',
+  },
+  'linux': {
+    url: `${DOWNLOAD_BASE_URL}/linux`,
+    filename: 'TchueKAM-Linux.AppImage',
+    label: 'Linux',
+    type: '.AppImage',
+  },
 };
 
 type OS = 'windows' | 'macos-arm64' | 'macos-x64' | 'linux';
@@ -44,90 +47,29 @@ function detectOS(): OS {
   return 'windows';
 }
 
-const ASSET_PATTERNS: Record<OS, RegExp> = {
-  'windows':     /win.*\.exe$/i,
-  'macos-arm64': /mac.*arm64.*\.(dmg|zip)$/i,
-  'macos-x64':   /mac.*(x64|x86_64|intel).*\.(dmg|zip)$/i,
-  'linux':       /linux.*\.AppImage$/i,
-};
-
-const OS_LABELS: Record<OS, string> = {
-  'windows':     'Windows',
-  'macos-arm64': 'macOS (Apple Silicon)',
-  'macos-x64':   'macOS (Intel)',
-  'linux':       'Linux',
-};
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
-
-function formatDate(iso: string): string {
+function trackDownload(assetName: string, downloadUrl: string, targetOS: string, version: string = 'v1.0.0') {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: 'numeric', month: 'long', day: 'numeric'
-    });
-  } catch {
-    return iso;
-  }
-}
-
-/**
- * Universal telemetry event tracker for download events.
- * Sends event directly to PostHog API via beacon/fetch.
- */
-function trackDownload(assetName: string, downloadUrl: string, targetOS: string, version: string = 'latest') {
-  try {
-    if (typeof window !== 'undefined') {
-      // 1. Send via window.posthog if available
-      if ((window as any).posthog?.capture) {
-        (window as any).posthog.capture('download_started', {
-          os: targetOS,
-          asset: assetName,
-          source: 'docs_site',
-          version,
-          download_url: downloadUrl,
-        });
-      }
-
-      // 2. Direct HTTP payload to PostHog endpoint for guaranteed delivery
-      const payload = {
-        api_key: POSTHOG_KEY,
-        event: "download_started",
-        properties: {
-          distinct_id: "user_" + Math.random().toString(36).substring(2, 10) + Date.now().toString(36),
-          $current_url: window.location.href,
-          $host: window.location.hostname,
-          $pathname: window.location.pathname,
-          os: targetOS,
-          asset: assetName,
-          source: "docs_site",
-          version,
-          download_url: downloadUrl,
-        },
-        timestamp: new Date().toISOString(),
-      };
-
-      if (navigator.sendBeacon) {
-        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        navigator.sendBeacon(`${POSTHOG_HOST}/capture/`, blob);
-      } else {
-        fetch(`${POSTHOG_HOST}/capture/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          keepalive: true,
-        }).catch(() => {});
-      }
+    if (typeof window !== 'undefined' && (window as any).posthog?.capture) {
+      (window as any).posthog.capture('download_started', {
+        os: targetOS,
+        asset: assetName,
+        source: 'docs_site',
+        version,
+        download_url: downloadUrl,
+      });
     }
   } catch {}
 }
 
-// ---------- Static fallback when no releases exist yet ----------
+export function StaticDownloadSection() {
+  const [os, setOS] = useState<OS>('windows');
 
-function StaticDownloadSection() {
+  useEffect(() => {
+    setOS(detectOS());
+  }, []);
+
+  const primaryDownload = DIRECT_DOWNLOADS[os] || DIRECT_DOWNLOADS.windows;
+
   return (
     <div style={{padding: '1.5rem', border: '1px solid rgba(0,242,254,0.15)', borderRadius: 12, background: 'rgba(0,242,254,0.04)'}}>
       <div style={{display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 16}}>
@@ -153,14 +95,13 @@ function StaticDownloadSection() {
 
       <div style={{display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16}}>
         <a
-          href={LATEST_RELEASE_URL}
+          href={primaryDownload.url}
+          download={primaryDownload.filename}
           className="button button--primary button--lg"
-          onClick={() => trackDownload('github_latest_release', LATEST_RELEASE_URL, 'all', 'v1.0.0')}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{textDecoration: 'none'}}
+          onClick={() => trackDownload(primaryDownload.filename, primaryDownload.url, os, 'v1.0.0')}
+          style={{textDecoration: 'none', background: '#00E5FF', color: '#07070d', fontWeight: 700}}
         >
-          ⬇ Download from GitHub
+          ⬇ Download for Windows
         </a>
       </div>
 
@@ -173,200 +114,32 @@ function StaticDownloadSection() {
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td><strong>Windows</strong> (64-bit)</td>
-            <td><code>.exe</code> installer</td>
-            <td>
-              <a
-                href={LATEST_RELEASE_URL}
-                onClick={() => trackDownload('TchuekaM-Setup-win-x64.exe', LATEST_RELEASE_URL, 'windows', 'v1.0.0')}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Download →
-              </a>
-            </td>
-          </tr>
-          <tr>
-            <td><strong>macOS</strong> (Apple Silicon)</td>
-            <td><code>.dmg</code></td>
-            <td>
-              <a
-                href={LATEST_RELEASE_URL}
-                onClick={() => trackDownload('TchuekaM-mac-arm64.dmg', LATEST_RELEASE_URL, 'macos-arm64', 'v1.0.0')}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Download →
-              </a>
-            </td>
-          </tr>
-          <tr>
-            <td><strong>macOS</strong> (Intel)</td>
-            <td><code>.dmg</code></td>
-            <td>
-              <a
-                href={LATEST_RELEASE_URL}
-                onClick={() => trackDownload('TchuekaM-mac-x64.dmg', LATEST_RELEASE_URL, 'macos-x64', 'v1.0.0')}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Download →
-              </a>
-            </td>
-          </tr>
-          <tr>
-            <td><strong>Linux</strong></td>
-            <td><code>.AppImage</code></td>
-            <td>
-              <a
-                href={LATEST_RELEASE_URL}
-                onClick={() => trackDownload('TchuekaM-linux-x64.AppImage', LATEST_RELEASE_URL, 'linux', 'v1.0.0')}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Download →
-              </a>
-            </td>
-          </tr>
+          {Object.entries(DIRECT_DOWNLOADS).map(([key, item]) => (
+            <tr key={key}>
+              <td><strong>{item.label}</strong></td>
+              <td><code>{item.type}</code></td>
+              <td>
+                <a
+                  href={item.url}
+                  download={item.filename}
+                  onClick={() => trackDownload(item.filename, item.url, key, 'v1.0.0')}
+                  style={{color: '#00F2FE', fontWeight: 600, textDecoration: 'none'}}
+                >
+                  Download →
+                </a>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
-      <p style={{opacity: 0.5, fontSize: 13, marginTop: 12}}>
-        All downloads available on the{' '}
-        <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">GitHub Releases page</a>.
+      <p style={{opacity: 0.6, fontSize: 13, marginTop: 12}}>
+        All downloads are verified and hosted directly by TchueKAM.
       </p>
     </div>
   );
 }
 
-// ---------- Main component ----------
-
 export default function LatestRelease({showAllPlatforms = false}: {showAllPlatforms?: boolean}) {
-  const [release, setRelease] = useState<Release | null>(null);
-  const [status, setStatus] = useState<'loading' | 'loaded' | 'no-releases' | 'error'>('loading');
-  const [os, setOS] = useState<OS>('windows');
-
-  useEffect(() => {
-    setOS(detectOS());
-    fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`)
-      .then(r => {
-        if (r.status === 404) {
-          // No releases published yet — show static fallback
-          setStatus('no-releases');
-          return null;
-        }
-        if (!r.ok) throw new Error(`GitHub API returned ${r.status}`);
-        return r.json();
-      })
-      .then(data => {
-        if (data) {
-          setRelease(data);
-          setStatus('loaded');
-        }
-      })
-      .catch(() => setStatus('no-releases')); // Fallback on any error
-  }, []);
-
-  // Show static download section when no releases exist or on error
-  if (status === 'no-releases' || status === 'error') {
-    return <StaticDownloadSection />;
-  }
-
-  if (status === 'loading' || !release) {
-    return <p style={{opacity: 0.6}}>Loading latest version…</p>;
-  }
-
-  const allAssets = release.assets || [];
-  const matchAsset = (targetOS: OS) =>
-    allAssets.find(a => ASSET_PATTERNS[targetOS].test(a.name));
-
-  const primaryAsset = matchAsset(os);
-
-  // If the release exists but has no matching assets, show static fallback
-  if (allAssets.length === 0) {
-    return <StaticDownloadSection />;
-  }
-
-  return (
-    <div className="latest-release">
-      <div style={{display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 16}}>
-        <span style={{
-          background: 'rgba(0,242,254,0.12)',
-          color: '#00F2FE',
-          padding: '4px 10px',
-          borderRadius: 12,
-          fontSize: 12,
-          fontWeight: 600,
-          letterSpacing: 0.5,
-        }}>
-          {release.tag_name}
-        </span>
-        <span style={{opacity: 0.6, fontSize: 14}}>
-          Released {formatDate(release.published_at)}
-        </span>
-      </div>
-
-      {primaryAsset ? (
-        <a
-          href={primaryAsset.browser_download_url}
-          className="button button--primary button--lg"
-          onClick={() => trackDownload(primaryAsset.name, primaryAsset.browser_download_url, os, release.tag_name)}
-          style={{textDecoration: 'none'}}
-        >
-          ⬇ Download for {OS_LABELS[os]}
-          <span style={{opacity: 0.7, fontSize: 13, marginLeft: 8}}>
-            ({formatBytes(primaryAsset.size)})
-          </span>
-        </a>
-      ) : (
-        <p>
-          <em>No build available for your platform yet. </em>
-          <a href={release.html_url} target="_blank" rel="noopener noreferrer">
-            See all downloads on GitHub →
-          </a>
-        </p>
-      )}
-
-      {showAllPlatforms && (
-        <div style={{marginTop: 24}}>
-          <h3 style={{fontSize: 15, marginBottom: 12}}>All platforms</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Platform</th>
-                <th>File</th>
-                <th>Size</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(['windows', 'macos-arm64', 'macos-x64', 'linux'] as OS[]).map(targetOS => {
-                const asset = matchAsset(targetOS);
-                return (
-                  <tr key={targetOS}>
-                    <td>{OS_LABELS[targetOS]}</td>
-                    <td><code>{asset ? asset.name : '—'}</code></td>
-                    <td>{asset ? formatBytes(asset.size) : '—'}</td>
-                    <td>
-                      {asset ? (
-                        <a
-                          href={asset.browser_download_url}
-                          onClick={() => trackDownload(asset.name, asset.browser_download_url, targetOS, release.tag_name)}
-                        >
-                          Download
-                        </a>
-                      ) : (
-                        <span style={{opacity: 0.4}}>n/a</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+  return <StaticDownloadSection />;
 }
